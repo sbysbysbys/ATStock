@@ -4,7 +4,7 @@ import yaml
 import os
 from datetime import datetime, timedelta
 
-config_path = "akshare.yaml"
+config_path = ".\\datasets\\akshare.yaml"
 # 遍历日期函数
 def traverse_dates(start_date, end_date, delta=1):
     start_date = datetime.strptime(start_date, '%Y%m%d')
@@ -187,8 +187,9 @@ def clean_empty_csvfile(dir):
                 os.remove(file_name)
 
 
+
 if __name__ == "__main__":
-    print("akshareutils.py")
+    print("running akshareutils.py")
     # for date in traverse_dates("20200201", "20200215"):
     #     print(date)
 

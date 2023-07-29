@@ -1,8 +1,10 @@
 root_dir: &anchor_root C:\Users\admin\Desktop\github\datasets\ATStock
 save_path : &anchor_save !!python/object/apply:os.path.join [*anchor_root, visulization]
-datasets_path : !!python/object/apply:os.path.join [*anchor_root, akshare]
+datasets_path : &anchor_data !!python/object/apply:os.path.join [*anchor_root, akshare]
 
 daily :
   symbol : '000001'
-  dir : !!python/object/apply:os.path.join [*anchor_save, daily_hfq]
+  dir : !!python/object/apply:os.path.join [*anchor_data, daily_hfq]
   start_date : '20000101'
+  graph_start_date: '20210101'
+  graph_type: 'k'
