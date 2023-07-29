@@ -40,7 +40,7 @@ def get_one_stock_daily(symbol=0, update=False):
     s_start_date = config["one_stock_daily"]["start_date"]
     s_end_date = config["one_stock_daily"]["end_date"]
     s_adjust = config["one_stock_daily"]["adjust"]
-    save_dir = os.path.join(config["one_stock_daily"]["save_dir"], s_start_date + "-" + s_end_date)
+    save_dir = os.path.join(config["one_stock_daily"]["save_dir"], s_start_date)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -188,6 +188,7 @@ def clean_empty_csvfile(dir):
 
 
 if __name__ == "__main__":
+    print("akshareutils.py")
     # for date in traverse_dates("20200201", "20200215"):
     #     print(date)
 
@@ -199,10 +200,11 @@ if __name__ == "__main__":
     # stock_zh_a_minute_df = ak.stock_zh_a_hist_min_em(symbol="600036", start_date="20230613 09:30:00", end_date="20230613 15:00:00", period='5', adjust='')
     # print(stock_zh_a_minute_df)
 
-    get_all_stock_one_minute()
+    # get_all_stock_one_minute()
 
     # get_one_stock_one_minute("688671")
 
     # update_stock()
 
     # clean_empty_csvfile("C:\\Users\\admin\\Desktop\\github\\datasets\\akshare\\5_minutes")
+    
