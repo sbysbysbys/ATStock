@@ -8,3 +8,9 @@ daily :
   start_date : '20000101'
   graph_start_date: '20210101'
   graph_type: 'k'
+
+5minutes:
+  symbol : '000001'
+  dir : !!python/object/apply:os.path.join [*anchor_data, 5_minutes]
+  date : '20230725'
+  graph_type: 'k'

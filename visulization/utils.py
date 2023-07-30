@@ -3,6 +3,7 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import matplotlib.dates as mdates
+from mplfinance.original_flavor import candlestick_ohlc
 import yaml
 import pandas as pd
 import numpy as np
@@ -15,15 +16,16 @@ from datasets.akshareutils import get_stock_name
 
 config_path = ".//visulization//vis.yaml"
 
-def vis_daily(symbol=0, graph_start_date=0, graph_type=0):
+# 日期曲线图
+def vis_daily(symbol='0', graph_start_date='0', graph_type='0'):
     with open(config_path) as f:
         config = yaml.unsafe_load(f)
     daily_dir = config["daily"]["dir"]
-    if graph_start_date == 0:
+    if graph_start_date == '0':
         graph_start_date = config["daily"]["graph_start_date"]
-    if graph_type == 0:
+    if graph_type == '0':
         graph_type = config["daily"]["graph_type"]
-    if symbol == 0:
+    if symbol == '0':
         s_symbol = config["daily"]["symbol"]
     else:
         s_symbol = symbol
@@ -32,12 +34,12 @@ def vis_daily(symbol=0, graph_start_date=0, graph_type=0):
     daily_dir = os.path.join(daily_dir, s_start_date)
     daily_path = os.path.join(daily_dir, s_symbol + s_name[:-1] + ".csv")
     s_data = pd.read_csv(daily_path, encoding="gbk")
-    draw_stock_graph(s_data, start_date=graph_start_date, graph=graph_type)
+    draw_stock_graph_daily(s_data, start_date=graph_start_date, graph=graph_type)
     plt.show()
 
 
-# 绘制股票走势图
-def draw_stock_graph(data,start_date="20200101", delta=35, graph="k"):
+# 绘制股票走势图daily
+def draw_stock_graph_daily(data,start_date="20200101", delta=35, graph="k"):
     start_date = pd.to_datetime(start_date, format="%Y%m%d")
     data["日期"] = data["日期"].str.replace("/", "-")
     data["日期"] = pd.to_datetime(data["日期"], format="%Y-%m-%d")
@@ -81,16 +83,24 @@ def draw_stock_graph(data,start_date="20200101", delta=35, graph="k"):
 
     plt.show()
 
+# 注意这里的kline的类型是int类型的，由时间/日期转换而来的数据，因为k线图不能用时间/日期作为x轴
 # 绘制K线图
 def draw_k_graph(data):
-    condition = data["收盘"] > data["开盘"]
-    colors = np.where(condition, 'r', 'g')
-    plt.bar(data["日期"], data["最高"] - data["最低"], bottom=data["最低"], width=0.1, color=colors, edgecolor='k', align='center')
-    plt.bar(data["日期"], data["收盘"] - data["开盘"], bottom=data["开盘"], width=0.6, color=colors, edgecolor='k', align='center')
+    if '日期' in data.columns:
+        xline = '日期'
+        xwidth = 0.6
+    elif '时间' in data.columns:
+        xline = '时间'
+        xwidth = 0.002
+    candlestick_ohlc(plt.gca(), data[[xline, "开盘", "最高", "最低", "收盘"]].values, width=xwidth, colorup='r', colordown='g')
 
 # 绘制折线图
 def draw_line_graph(data):
-    plt.plot(data["日期"], data["收盘"], label="收盘价")
+    if '日期' in data.columns:
+        xline = '日期'
+    elif '时间' in data.columns:
+        xline = '时间'
+    plt.plot(data[xline], data["收盘"], label="收盘价")
 
 # 日期转换int函数
 def date2num(date):
@@ -100,7 +110,66 @@ def date2num(date):
 def num2date(num):
     return mdates.num2date(num)
 
+# 五分钟曲线图
+def vis_5minutes(symbol='0', graph_date='0', graph_type='0'):
+    with open(config_path) as f:
+        config = yaml.unsafe_load(f)
+    minutes_dir = config["5minutes"]["dir"]
+    if graph_date == '0':
+        graph_date = config["5minutes"]["date"]
+    date = datetime.strptime(graph_date, "%Y%m%d")
+    if(date.weekday() > 4):
+        print("The date is not a weekday!")
+        return
+    if graph_type == '0':
+        graph_type = config["5minutes"]["graph_type"]
+    if symbol == '0':
+        s_symbol = config["5minutes"]["symbol"]
+    else:
+        s_symbol = symbol
+    s_name = get_stock_name(s_symbol)
+    minutes_dir = os.path.join(minutes_dir, s_symbol + s_name[:-1])
+    minutes_path = os.path.join(minutes_dir, graph_date + ".csv")
+    if not os.path.exists(minutes_path):
+        print("The file of this date does not exist!")
+        return
+    s_data = pd.read_csv(minutes_path, encoding="gbk")
+    # print(s_data)
+    draw_stock_graph_5minutes(s_data, graph=graph_type)
+    plt.show()
+
+# 绘制股票走势图5minutes
+def draw_stock_graph_5minutes(data, graph = '0'):
+    with open(config_path) as f:
+        config = yaml.unsafe_load(f)
+    if graph == '0':
+        graph = config["5minutes"]["graph_type"]
+
+    data["时间"] = pd.to_datetime(data["时间"])
+    data.set_index("时间", inplace=True)
+    data["时间"] = mdates.date2num(data.index.to_pydatetime())
+    # print(data['时间'])
+
+    plt.figure(figsize=(10, 6))
+    if graph == 'k':
+        plt.title("K-Graph")
+        draw_k_graph(data)
+    elif graph == 'line':
+        plt.title("Line-Graph")
+        draw_line_graph(data)
+    elif graph == 'kline':
+        plt.title("K-Line-Graph")
+        draw_k_graph(data)
+        draw_line_graph(data)
+    # 这里加图像设计
+
+    plt.grid(True)
+    plt.xlabel("Time")
+    plt.ylabel("Price")
+    plt.xlim(num2date(data["时间"].min()), num2date(data["时间"].max()))
+
 if __name__ == "__main__":
     print("running visulization/utils.py")
 
-    vis_daily()
+    # vis_daily()
+    # vis_5minutes()
