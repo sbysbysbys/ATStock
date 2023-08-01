@@ -24,3 +24,5 @@ if __name__ == "__main__":
     elif opt.delta == "5minutes":
         vis_5minutes(symbol = opt.symbol, graph_date = opt.date, graph_type = opt.graph)
 
+# python .\visulization\vis.py --delta daily --graph kline --symbol 000001 --start_date 20220101     
+# python .\visulization\vis.py --delta 5minutes --graph kline --symbol 000001 --date 20230725

@@ -1,0 +1,23 @@
+root_dir: &anchor_root C:\Users\admin\Desktop\github\datasets\ATStock\akshare
+daily:
+  start_date: &anchor_start "20000101"
+  dir: !!python/object/apply:os.path.join [*anchor_root, daily_hfq, *anchor_start]
+  single_stock:
+    symbol: "000001"
+    models_path: checkpoints\models
+    logs_path: checkpoints\logs
+    x_length: 81
+    y_length: 8
+    batch_size: 32
+    if_normalized: True
+    kernel_size: 3
+    conv_nums: 2
+    conv_channels: 4
+    conv_channels_times: 2
+    num_epochs: 1
+    num_epochs_decay: 0
+    learning_rate: 0.001
+    num_layers: 3
+    hidden_size: 64
+    attention_size: 64
+
