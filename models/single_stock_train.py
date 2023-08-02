@@ -36,51 +36,48 @@ if __name__ == '__main__':
     encoder.to(device)
     decoder = Decoder()
     decoder.to(device)
-    # criterion = nn.MSELoss()
-    # optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=num_epochs_decay, gamma=0.1)
 
     train_loss = []
-    test_loss = []
     check_size = True
-    for epoch in range(num_epochs+num_epochs_decay):
-        for i, (x, y) in enumerate(train_dataloader):
-            x = x.to(device)
-            y = y.to(device)
-            x_end = x[:, -1, :].to(device)
-            # x.size = [32, x_length=81, 11]
-            # y.size = [32, y_length=8, 11]
+    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
+    for i in range(num_epochs+num_epochs_decay):
+        for j, (x, y) in enumerate(train_dataloader):
+            x = x.float().to(device)
+            y = y.float().to(device)
+            loss = critertion(encoder, decoder, x, y, check_size = check_size).float()
+            check_size = False
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss.append(loss.item())
+        
+        avg_loss = sum(train_loss)/len(train_loss)
+        print("epoch = ", i, "loss = ", loss.item())
 
-            enc_output,enc_hidden = encoder(x, check_size=check_size)
-            if check_size == True:
-                print("enc_output.shape = ", enc_output.shape)
-                print("enc_state.shape = ",enc_hidden.shape)
-            # encoder: conv_num = 2
-            # x.shape =  torch.Size([32, 81, 11])
-            # x.first_permute =  torch.Size([32, 11, 81])
-            # conv 0 , x.shape =  torch.Size([32, 4, 81])
-            # maxpool 0 , x.shape =  torch.Size([32, 4, 27])
-            # conv 1 , x.shape =  torch.Size([32, 8, 27])
-            # maxpool 1 , x.shape =  torch.Size([32, 8, 9])
-            # x.second_permute =  torch.Size([32, 9, 8])
-            # h0.shape =  torch.Size([2, 32, 64])
-            # enc_output.size =  torch.Size([32, 9, 64])
-            # enc_state,size =  torch.Size([2, 32, 64])
+            # # x_end = x[:, -1, :].to(device)
+            # enc_output,enc_hidden = encoder(x, check_size=check_size)
+            # if check_size == True:
+            #     print("enc_output.shape = ", enc_output.shape)
+            #     print("enc_state.shape = ",enc_hidden.shape)
 
-            dec_hidden = decoder.begin_state(enc_hidden)
-            dec_input = x_end
-            for y in range(y_length):
-                dec_output, dec_hidden = decoder(dec_hidden, enc_output, check_size=check_size)
-                dec_input = dec_output
-                if check_size == True:
-                    print("dec_output.size = ", dec_output.shape)
-                    print("dec_hidden.size = ", dec_hidden.shape)
-                    check_size = False
-
-
+            # dec_hidden = decoder.begin_state(enc_hidden)
+            # # dec_input = x_end
+            # dec_output_tstep = 0
+            # for y in range(y_length):
+            #     dec_output, dec_hidden = decoder(dec_hidden, enc_output, check_size=check_size)
+            #     dec_input = dec_output
+            #     if check_size == True:
+            #         print("dec_output.size = ", dec_output.shape)
+            #         print("dec_hidden.size = ", dec_hidden.shape)
+            #         check_size = False
+            #     if dec_output_tstep == 0:
+            #         dec_output_tstep = dec_output
+            #     else:
+            #         dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
+            
+            # loss = critertion(dec_output_tstep, y)
+            # train_loss.append(loss.item())
             # optimizer.zero_grad()
-            # outputs = encoder(x)
-            # loss = criterion(outputs, y)
             # loss.backward()
             # optimizer.step()
 

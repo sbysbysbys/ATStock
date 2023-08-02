@@ -141,7 +141,7 @@ class Encoder(nn.Module):
         if check_size:
             print("---------------start encoder-----------------")
             print("x.shape = ", x.shape)
-        x = x.permute(0,2,1).float()
+        x = x.permute(0,2,1)
         if check_size:
             print("x.first_permute = ", x.shape)
         for i in range(self.conv_nums):
@@ -186,20 +186,34 @@ class Attention(nn.Module):
             print("---------------start attention-----------------")
             print("hidden.shape = ", hidden.shape)
             print("encoder_outputs.shape = ", encoder_outputs.shape)
-        h = hidden.repeat(timestep, 1, 1).transpose(0,1)
-        # AUTO:不知道这样线性连接会不会出问题,num_layers变一下试试！！
-        encoder_outputs = encoder_outputs.repeat(1, self.num_layers,1)
+        for i in range(self.num_layers):
+            if check_size:
+                print("hidden[", i, "].shape = ", hidden[i].shape)
+            h = hidden[i].repeat(timestep, 1, 1).transpose(0,1)
+            # AUTO:不知道这样线性连接会不会出问题,num_layers变一下试试！！
+            if check_size:
+                print("h_repeat", i, ".shape = ", h.shape)
+            attn_energies_layers = self.score(h, encoder_outputs, check_size = check_size).unsqueeze(1)
+            # 最后输出的是注意力的权重
+            if i == 0:
+                attn_energies = attn_energies_layers
+            else:
+                attn_energies = torch.cat((attn_energies, attn_energies_layers), dim=1)
+            if check_size:
+                print("attn_energies", i, ".shape = ", attn_energies.shape)
+        # 如果是上一个的输出值输入的话就要有下面的这句话
+        attn_energies = torch.sum(attn_energies, dim=1).unsqueeze(1)
+        attn_weights = F.softmax(attn_energies, dim=1)
         if check_size:
-            print("h_repeat.shape = ", h.shape)
-            print("encoder_outputs_repeat.shape = ", encoder_outputs.shape)
-        attn_energies = self.score(h, encoder_outputs, check_size = check_size)
-        # 最后输出的是注意力的权重
-        return F.softmax(attn_energies, dim=1).unsqueeze(1)
+            print("attn_weights.shape = ", attn_weights.shape)
+            print("---------------end attention-----------------")
+        return attn_weights
     
     def score(self, hidden, encoder_outputs, check_size = False):
         # AUTO 是否换成加性注意力？在时间上的损耗又是多少
         energy = F.leaky_relu(self.attn(torch.cat([hidden, encoder_outputs], 2)))
         if check_size:
+            print("---------------start score-----------------")
             print("energy.shape = ", energy.shape)
         energy = energy.transpose(1,2)
         if check_size:
@@ -208,14 +222,14 @@ class Attention(nn.Module):
         if check_size:
             print("v.shape = ", v.shape)
         energy = torch.bmm(v, energy)
-        energy = energy.sum(axis=2, padding=encoder_outputs.size(1))#####################################
         if check_size:
             print("energy_bmm.shape = ", energy.shape)
-            print("---------------end attention-----------------")
+            print("---------------end score-----------------")
         return energy.squeeze(1)
     
 # GRU作为解码器
 class Decoder(nn.Module):
+    # AUTO：选择只输出一个值还是输出全11个值
     def __init__(self, hidden_size = 0, output_size = 1,  num_layers = 0):
         super(Decoder, self).__init__()
         with open(config_path, 'r')as f:
@@ -247,7 +261,7 @@ class Decoder(nn.Module):
         context = attn_weights.bmm(encoder_outputs)
         if check_size:
             print("context.shape = ", context.shape)
-        rnn_input = torch.cat((context, hidden), 2)
+        rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
         if check_size:
             print("rnn_input.shape = ", rnn_input.shape)
         output, hidden = self.rnn(rnn_input, hidden)
@@ -259,3 +273,69 @@ class Decoder(nn.Module):
     
     def begin_state(self, enc_hidden):
         return enc_hidden
+
+def critertion(encoder, decoder, x, y, check_size = False):
+    # x_end = x[:, -1, :].to(device)
+    y_length = y.shape[1]
+    if check_size == True:
+        print("y_length = ", y_length)
+    enc_output,enc_hidden = encoder(x, check_size=check_size)
+    if check_size == True:
+        print("enc_output.shape = ", enc_output.shape)
+        print("enc_state.shape = ",enc_hidden.shape)
+
+    dec_hidden = decoder.begin_state(enc_hidden)
+    # dec_input = x_end
+    for tstep in range(y_length):
+        dec_output, dec_hidden = decoder(dec_hidden, enc_output, check_size=check_size)
+        # dec_input = dec_output
+        if check_size == True:
+            print("dec_output.size = ", dec_output.shape)
+            print("dec_hidden.size = ", dec_hidden.shape)
+            check_size = False
+        if tstep == 0:
+            dec_output_tstep = dec_output
+        else:
+            dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
+    # AUTO:这里的损失函数可以换成其他的
+    # return torch.mean(torch.abs(pred - label) / label)
+    critertion = nn.MSELoss()
+    return critertion(dec_output_tstep, y[:,:,2])
+'''
+---------------start encoder-----------------
+x.shape =  torch.Size([32, 81, 11])
+x.first_permute =  torch.Size([32, 11, 81])
+conv 0 , x.shape =  torch.Size([32, 4, 81])
+maxpool 0 , x.shape =  torch.Size([32, 4, 27])
+conv 1 , x.shape =  torch.Size([32, 8, 27])
+maxpool 1 , x.shape =  torch.Size([32, 8, 9])
+x.second_permute =  torch.Size([32, 9, 8])
+h0.shape =  torch.Size([1, 32, 64])
+---------------end encoder-----------------
+enc_output.shape =  torch.Size([32, 9, 64])
+enc_state.shape =  torch.Size([1, 32, 64])
+---------------start decoder---------------
+hidden.shape =  torch.Size([1, 32, 64])
+encoder_outputs.shape =  torch.Size([32, 9, 64])
+---------------start attention-----------------
+hidden.shape =  torch.Size([1, 32, 64])
+encoder_outputs.shape =  torch.Size([32, 9, 64])
+hidden[ 0 ].shape =  torch.Size([32, 64])
+h_repeat 0 .shape =  torch.Size([32, 9, 64])
+---------------start score-----------------
+energy.shape =  torch.Size([32, 9, 64])
+energy_transpose.shape =  torch.Size([32, 64, 9])
+v.shape =  torch.Size([32, 1, 64])
+energy_bmm.shape =  torch.Size([32, 1, 9])
+---------------end score-----------------
+attn_energies 0 .shape =  torch.Size([32, 1, 9])
+attn_weights.shape =  torch.Size([32, 1, 9])
+---------------end attention-----------------
+attn_weights.shape =  torch.Size([32, 1, 9])
+context.shape =  torch.Size([32, 1, 64])
+rnn_input.shape =  torch.Size([32, 1, 128])
+output.shape =  torch.Size([32, 64])
+---------------end decoder---------------
+dec_output.size =  torch.Size([32, 1])
+dec_hidden.size =  torch.Size([1, 32, 64])
+'''
