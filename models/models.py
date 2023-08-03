@@ -202,7 +202,7 @@ class Attention(nn.Module):
             if check_size:
                 print("attn_energies", i, ".shape = ", attn_energies.shape)
         # 如果是上一个的输出值输入的话就要有下面的这句话
-        attn_energies = torch.sum(attn_energies, dim=1).unsqueeze(1)
+        # attn_energies = torch.sum(attn_energies, dim=1).unsqueeze(1)
         attn_weights = F.softmax(attn_energies, dim=1)
         if check_size:
             print("attn_weights.shape = ", attn_weights.shape)
@@ -230,7 +230,7 @@ class Attention(nn.Module):
 # GRU作为解码器
 class Decoder(nn.Module):
     # AUTO：选择只输出一个值还是输出全11个值
-    def __init__(self, hidden_size = 0, output_size = 1,  num_layers = 0):
+    def __init__(self, hidden_size = 0, output_size = 2,  num_layers = 0):
         super(Decoder, self).__init__()
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
@@ -246,11 +246,11 @@ class Decoder(nn.Module):
         self.num_layers = num_layers
         # 这里的attion_size和hidden_size保持一致,因为要连接
         self.attn = Attention(hidden_size)
-        self.rnn = nn.GRU(hidden_size*2, hidden_size, num_layers, batch_first=True)
+        self.rnn = nn.GRU(hidden_size*2*num_layers+output_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
     
     # AUTO:是否要使用上一个的输出值做输入？
-    def forward(self, hidden, encoder_outputs, check_size = False):
+    def forward(self, hidden, encoder_outputs, last_input, check_size = False):
         if check_size:
             print("---------------start decoder---------------")
             print("hidden.shape = ", hidden.shape)
@@ -262,6 +262,9 @@ class Decoder(nn.Module):
         if check_size:
             print("context.shape = ", context.shape)
         rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
+        rnn_input = torch.reshape(rnn_input, (rnn_input.shape[0], 1, -1))
+        last_input = last_input.unsqueeze(1)
+        rnn_input = torch.cat((rnn_input, last_input), 2)
         if check_size:
             print("rnn_input.shape = ", rnn_input.shape)
         output, hidden = self.rnn(rnn_input, hidden)
@@ -274,33 +277,74 @@ class Decoder(nn.Module):
     def begin_state(self, enc_hidden):
         return enc_hidden
 
-def critertion(encoder, decoder, x, y, check_size = False):
-    # x_end = x[:, -1, :].to(device)
-    y_length = y.shape[1]
-    if check_size == True:
-        print("y_length = ", y_length)
-    enc_output,enc_hidden = encoder(x, check_size=check_size)
-    if check_size == True:
-        print("enc_output.shape = ", enc_output.shape)
-        print("enc_state.shape = ",enc_hidden.shape)
-
-    dec_hidden = decoder.begin_state(enc_hidden)
-    # dec_input = x_end
-    for tstep in range(y_length):
-        dec_output, dec_hidden = decoder(dec_hidden, enc_output, check_size=check_size)
-        # dec_input = dec_output
+# Seq2Seq模型+损失函数  
+class Seq2Seq(nn.Module):
+    def __init__(self, encoder, decoder):
+        super(Seq2Seq, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+    
+    def forward(self, x, y, check_size = False):
+        x_end = x[:, -1, 2]
+        y_length = y.shape[1]
+        enc_output,enc_hidden = self.encoder(x, check_size=check_size)
         if check_size == True:
-            print("dec_output.size = ", dec_output.shape)
-            print("dec_hidden.size = ", dec_hidden.shape)
-            check_size = False
-        if tstep == 0:
-            dec_output_tstep = dec_output
-        else:
-            dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
-    # AUTO:这里的损失函数可以换成其他的
-    # return torch.mean(torch.abs(pred - label) / label)
-    critertion = nn.MSELoss()
-    return critertion(dec_output_tstep, y[:,:,2])
+            print("enc_output.shape = ", enc_output.shape)
+            print("enc_state.shape = ",enc_hidden.shape)
+
+        dec_hidden = self.decoder.begin_state(enc_hidden)
+        last_input = x_end.unsqueeze(1)
+        confidence = torch.ones((last_input.shape[0], 1))/last_input.shape[0]
+        last_input = torch.cat((last_input, confidence), dim=1)
+        tstep_check_size = check_size
+        for tstep in range(y_length):
+            dec_output, dec_hidden = self.decoder(dec_hidden, enc_output, last_input, check_size=tstep_check_size)
+            last_input = dec_output
+            if tstep_check_size == True:
+                print("dec_output.size = ", dec_output.shape)
+                print("dec_hidden.size = ", dec_hidden.shape)
+                tstep_check_size = False
+            if tstep == 0:
+                dec_output_tstep = dec_output
+            elif tstep == y_length-1:
+                dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
+            else:
+                dec_output_tstep = torch.cat((dec_output_tstep, dec_output[:,0].unsqueeze(1)), dim=1)
+        trend_loss, mse_loss = self.criterion(dec_output_tstep, y, check_size=check_size)
+        return trend_loss, mse_loss
+    
+    def criterion(self, dec_output, y, check_size = False):
+        with open(config_path, 'r')as f:
+            config = yaml.unsafe_load(f)
+        config = config['daily']['single_stock']
+        wt_up = config['wt_up']
+        wt_down = config['wt_down']
+        wt_avg = (wt_up+wt_down)/2
+        wt_off = abs(wt_up-wt_down)/2
+        # 我们更关心涨的，而且需要置信度高的
+        output = dec_output[:,0:y.shape[1]]
+        if check_size:
+            print("confidence = ", dec_output[:,y.shape[1]])
+        # 用relu还是abs还是square？rule不行
+        confidence = F.softmax(torch.square(dec_output[:,y.shape[1]]), dim=0)
+        pred_trend = output[:,-1] - output[:,0]
+        pred_trend_sign = torch.sign(pred_trend)
+        y_trend = y[:,-1,2] - y[:,0,2]
+        y_trend_sign = torch.sign(y_trend)
+        diff_sign = (pred_trend_sign - y_trend_sign)/2
+        diff_sign_weight = (torch.ones(diff_sign.shape)*wt_avg + diff_sign*wt_off)* diff_sign
+        if check_size:
+            print("confidence = ", confidence)
+            print("diff_sign = ", diff_sign)
+            print("diff_sign_weight = ", diff_sign_weight)
+        trend_loss = (pred_trend - y_trend)*diff_sign_weight*confidence######################
+        mse_loss = torch.mean(torch.square(output-y[:,:,2]), dim=1)*confidence
+        trend_loss = torch.sum(trend_loss)
+        mse_loss = torch.sum(mse_loss)
+        if check_size:
+            print("trend_loss = ", trend_loss)
+            print("mse_loss = ", mse_loss)
+        return trend_loss, mse_loss
 '''
 ---------------start encoder-----------------
 x.shape =  torch.Size([32, 81, 11])

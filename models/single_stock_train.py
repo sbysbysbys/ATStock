@@ -30,60 +30,51 @@ if __name__ == '__main__':
     conv_nums = config['conv_nums']
     conv_channels = config['conv_channels']
     conv_channels_times = config['conv_channels_times']
+    model_save_freq = config['model_save_freq']
+    if_check_size = config['if_check_size']
+    check_size_position = config['check_size_position']
+    model_path = config['model_path']
+    x_length = config['x_length']
     y_length = config['y_length']
+    model_path = os.path.join(model_path, str(x_length)+"to"+str(y_length))
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
 
     encoder = Encoder()
     encoder.to(device)
     decoder = Decoder()
     decoder.to(device)
+    model = Seq2Seq(encoder, decoder)
+    model.to(device)
 
-    train_loss = []
-    check_size = True
-    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
+    train_trend_loss = []
+    train_mse_loss = []
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
     for i in range(num_epochs+num_epochs_decay):
+        check_size = if_check_size * (i == check_size_position)
         for j, (x, y) in enumerate(train_dataloader):
             x = x.float().to(device)
             y = y.float().to(device)
-            loss = critertion(encoder, decoder, x, y, check_size = check_size).float()
+            trend_loss, mse_loss = model(x, y, check_size = check_size)
+            loss = trend_loss + mse_loss
             check_size = False
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            train_loss.append(loss.item())
-        
-        avg_loss = sum(train_loss)/len(train_loss)
-        print("epoch = ", i, "loss = ", loss.item())
+            train_trend_loss.append(trend_loss.item())
+            train_mse_loss.append(mse_loss.item())
+        print(train_trend_loss)
+        print(train_mse_loss)
+        avg_trend_loss = sum(train_trend_loss)/len(train_dataloader)
+        avg_mse_loss = sum(train_mse_loss)/len(train_dataloader)
+        print("epoch = ", i+1, "trend_loss = ", trend_loss, "mse_loss = ", mse_loss)
 
-            # # x_end = x[:, -1, :].to(device)
-            # enc_output,enc_hidden = encoder(x, check_size=check_size)
-            # if check_size == True:
-            #     print("enc_output.shape = ", enc_output.shape)
-            #     print("enc_state.shape = ",enc_hidden.shape)
+        if (i+1) % model_save_freq == 0:
+            save_path = os.path.join(model_path, "model"+str(i+1)+".pth")
+            torch.save(model.state_dict(), save_path)
+            print("model saved")
 
-            # dec_hidden = decoder.begin_state(enc_hidden)
-            # # dec_input = x_end
-            # dec_output_tstep = 0
-            # for y in range(y_length):
-            #     dec_output, dec_hidden = decoder(dec_hidden, enc_output, check_size=check_size)
-            #     dec_input = dec_output
-            #     if check_size == True:
-            #         print("dec_output.size = ", dec_output.shape)
-            #         print("dec_hidden.size = ", dec_hidden.shape)
-            #         check_size = False
-            #     if dec_output_tstep == 0:
-            #         dec_output_tstep = dec_output
-            #     else:
-            #         dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
-            
-            # loss = critertion(dec_output_tstep, y)
-            # train_loss.append(loss.item())
-            # optimizer.zero_grad()
-            # loss.backward()
-            # optimizer.step()
-
-            # print(f'Epoch [{epoch+1}/{num_epochs+num_epochs_decay}], Step [{i+1}/{len(train_dataloader)}], Loss: {loss.item():.4f}')
-
-
-
-
-    
+        if (i+1) > num_epochs:
+            for g in optimizer.param_groups:
+                g['lr'] = g['lr'] - lr/num_epochs_decay
