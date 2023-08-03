@@ -23,8 +23,9 @@ daily:
     model_save_freq: 10
     if_check_size: True
     check_size_position: 19   #  0 ~ num_epochs+num_epochs_decay-1
-    wt_up: 0.5
-    wt_down: 0.3
+    if_trend_loss: True
+    wt_up: 0.1
+    wt_down: 0.05
 
 
 

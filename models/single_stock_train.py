@@ -36,6 +36,7 @@ if __name__ == '__main__':
     model_path = config['model_path']
     x_length = config['x_length']
     y_length = config['y_length']
+    if_trend_loss = config['if_trend_loss']
     model_path = os.path.join(model_path, str(x_length)+"to"+str(y_length))
     if not os.path.exists(model_path):
         os.makedirs(model_path)
@@ -47,28 +48,35 @@ if __name__ == '__main__':
     model = Seq2Seq(encoder, decoder)
     model.to(device)
 
-    train_trend_loss = []
-    train_mse_loss = []
+    
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
     for i in range(num_epochs+num_epochs_decay):
+        train_trend_loss = []
+        train_mse_loss = []
+        train_up_diff = []
+        train_up_pred = []
         check_size = if_check_size * (i == check_size_position)
         for j, (x, y) in enumerate(train_dataloader):
             x = x.float().to(device)
             y = y.float().to(device)
-            trend_loss, mse_loss = model(x, y, check_size = check_size)
-            loss = trend_loss + mse_loss
+            trend_loss, mse_loss, up_diff, up_pred = model(x, y, check_size = check_size)
+            loss = trend_loss*if_trend_loss + mse_loss
             check_size = False
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             train_trend_loss.append(trend_loss.item())
             train_mse_loss.append(mse_loss.item())
-        print(train_trend_loss)
-        print(train_mse_loss)
+            train_up_diff.append(up_diff.item())
+            train_up_pred.append(up_pred.item())
+        # print(train_trend_loss)
+        # print(train_mse_loss)
         avg_trend_loss = sum(train_trend_loss)/len(train_dataloader)
         avg_mse_loss = sum(train_mse_loss)/len(train_dataloader)
-        print("epoch = ", i+1, "trend_loss = ", trend_loss, "mse_loss = ", mse_loss)
+        avg_correctness = sum(train_up_diff)/sum(train_up_pred)
+        print("epoch = ", i+1, "trend_loss = ", avg_trend_loss, "mse_loss = ", avg_mse_loss, "correctness = ", avg_correctness)
 
         if (i+1) % model_save_freq == 0:
             save_path = os.path.join(model_path, "model"+str(i+1)+".pth")
