@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data import random_split
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
@@ -51,7 +50,6 @@ class ATSingleDataset(Dataset):
             config = yaml.unsafe_load(f)
         self.x_len = config['daily']['single_stock']['x_length']
         self.y_len = config['daily']['single_stock']['y_length']
-        self.if_single_normalized = config['daily']['single_stock']['if_single_normalized']
 
     def __len__(self):
         if len(self.data) < self.x_len + self.y_len:
@@ -59,13 +57,8 @@ class ATSingleDataset(Dataset):
         return len(self.data)-self.x_len-self.y_len-1
 
     def __getitem__(self, idx):
-        x = self.data[idx:idx+self.x_len, 0:6]
-        y = self.data[idx+self.x_len:idx+self.x_len+self.y_len, 0:6]
-        # if abs(y[0,2]/x[-1,2]-1) > 0.3:
-        #     print("idx = ", idx+self.x_len-1)
-        #     print("x = ", x[-5:,:])
-        #     print("y = ", y)
-        #     print("self = ", self.data[idx+self.x_len-3:idx+self.x_len+3])
+        x = self.data[idx:idx+self.x_len, 0:11]
+        y = self.data[idx+self.x_len:idx+self.x_len+self.y_len, 0:11]
         return x,y
 
 # 划分训练集和测试集
@@ -83,16 +76,18 @@ def get_train_and_test_data(data):
     train_data = data[:train_size+x_len+y_len-1]
     test_data = data[train_size:]
     if if_nomalized:
-        train_data, test_data = get_normalized_data(train_data, test_data, data)
-    
+        train_data, test_data = get_normalized_data(train_data, test_data)
+    # print("train data = ", train_data)
+    # print("test data = ", test_data)
+
     return train_data, test_data
 
 # 归一化 分别归一化训练集和测试集，但是使用的标准还是训练集的标准 原因是什么？
-def get_normalized_data(train_data, test_data, data):
+def get_normalized_data(train_data, test_data):
     train_data = np.array(train_data)
     test_data = np.array(test_data)
     scaler = MinMaxScaler()
-    scaler.fit(data)
+    scaler.fit(train_data)
     train_data = scaler.transform(train_data)
     test_data = scaler.transform(test_data)
     return train_data, test_data
@@ -106,27 +101,9 @@ def get_train_and_test_loader(data):
     train_dataset = ATSingleDataset(train_data)
     test_dataset = ATSingleDataset(test_data)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, test_loader
 
-# 构建数据加载器2:随机分配
-def get_train_and_test_loader2(data):
-    with open(config_path, 'r')as f:
-        config = yaml.unsafe_load(f)
-    batch_size = config['daily']['single_stock']['batch_size']
-    if_nomalized = config['daily']['single_stock']['if_normalized']
-
-    if if_nomalized:
-        scaler = MinMaxScaler()
-        scaler.fit(data)
-        data = scaler.transform(data)
-    dataset = ATSingleDataset(data)
-    train_size = int(len(dataset)*0.9)
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
-    return train_loader, test_loader
 
 # GRU作为编码器
 class Encoder(nn.Module):
@@ -141,7 +118,6 @@ class Encoder(nn.Module):
         self.conv_nums = conv_nums
         conv_channels = config['conv_channels']
         conv_channels_times = config['conv_channels_times']
-        self.if_pooling = config['if_pooling']
         if hidden_size == 0:
             hidden_size = config['hidden_size']
         if num_layers == 0:
@@ -149,17 +125,16 @@ class Encoder(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         if conv_nums == 0:
-            input_size = 6   # change input_size
+            input_size = 11
         else:
             input_size = conv_channels * (conv_channels_times ** (conv_nums-1))
         for i in range(conv_nums):
             if i == 0:
-                setattr(self, 'conv'+str(i+1), nn.Conv1d(6, conv_channels, kernel_size=kernel_size, padding=kernel_size//2)) # change input_size
+                setattr(self, 'conv'+str(i+1), nn.Conv1d(11, conv_channels, kernel_size=kernel_size, padding=kernel_size//2))
             else:
                 setattr(self, 'conv'+str(i+1), nn.Conv1d(conv_channels, conv_channels*conv_channels_times, kernel_size=kernel_size, padding=kernel_size//2))
                 conv_channels *= conv_channels_times
-            if self.if_pooling:
-                setattr(self, 'maxpool'+str(i+1), nn.MaxPool1d(kernel_size=kernel_size))
+            setattr(self, 'maxpool'+str(i+1), nn.MaxPool1d(kernel_size=kernel_size))
         self.rnn = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
     
     def forward(self, x, check_size = False):
@@ -173,10 +148,9 @@ class Encoder(nn.Module):
             x = getattr(self, 'conv'+str(i+1))(x)
             if check_size:
                 print("conv", i, ", x.shape = ", x.shape)
-            if self.if_pooling:
-                x = getattr(self, 'maxpool'+str(i+1))(x)
-                if check_size:
-                    print("maxpool", i, ", x.shape = ", x.shape)
+            x = getattr(self, 'maxpool'+str(i+1))(x)
+            if check_size:
+                print("maxpool", i, ", x.shape = ", x.shape)
         x = x.permute(0,2,1)
         if check_size:
             print("x.second_permute = ", x.shape)
@@ -228,7 +202,7 @@ class Attention(nn.Module):
             if check_size:
                 print("attn_energies", i, ".shape = ", attn_energies.shape)
         # 如果是上一个的输出值输入的话就要有下面的这句话
-        # attn_energies = torch.sum(attn_energies, dim=1).unsqueeze(1)
+        attn_energies = torch.sum(attn_energies, dim=1).unsqueeze(1)
         attn_weights = F.softmax(attn_energies, dim=1)
         if check_size:
             print("attn_weights.shape = ", attn_weights.shape)
@@ -236,6 +210,7 @@ class Attention(nn.Module):
         return attn_weights
     
     def score(self, hidden, encoder_outputs, check_size = False):
+        # AUTO 是否换成加性注意力？在时间上的损耗又是多少
         energy = F.leaky_relu(self.attn(torch.cat([hidden, encoder_outputs], 2)))
         if check_size:
             print("---------------start score-----------------")
@@ -255,7 +230,7 @@ class Attention(nn.Module):
 # GRU作为解码器
 class Decoder(nn.Module):
     # AUTO：选择只输出一个值还是输出全11个值
-    def __init__(self, hidden_size = 0, output_size = 1,  num_layers = 0): # add confidence
+    def __init__(self, hidden_size = 0, output_size = 1,  num_layers = 0):
         super(Decoder, self).__init__()
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
@@ -271,11 +246,11 @@ class Decoder(nn.Module):
         self.num_layers = num_layers
         # 这里的attion_size和hidden_size保持一致,因为要连接
         self.attn = Attention(hidden_size)
-        self.rnn = nn.GRU(hidden_size*(num_layers + 1), hidden_size, num_layers, batch_first=True) # change last_input
+        self.rnn = nn.GRU(hidden_size*2, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
     
     # AUTO:是否要使用上一个的输出值做输入？
-    def forward(self, hidden, encoder_outputs, last_input, check_size = False):
+    def forward(self, hidden, encoder_outputs, check_size = False):
         if check_size:
             print("---------------start decoder---------------")
             print("hidden.shape = ", hidden.shape)
@@ -286,15 +261,7 @@ class Decoder(nn.Module):
         context = attn_weights.bmm(encoder_outputs)
         if check_size:
             print("context.shape = ", context.shape)
-        # rnn_input = context     # change last_input
         rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
-        rnn_input = torch.reshape(rnn_input, (rnn_input.shape[0], 1, -1))
-        last_input = last_input.unsqueeze(1)
-        # rnn_input = torch.cat((rnn_input, last_input), 2)
-
-        context = torch.reshape(context, (context.shape[0], 1, -1))
-        rnn_input = torch.cat((context, last_input), 2)
-
         if check_size:
             print("rnn_input.shape = ", rnn_input.shape)
         output, hidden = self.rnn(rnn_input, hidden)
@@ -302,102 +269,38 @@ class Decoder(nn.Module):
         if check_size:
             print("output.shape = ", output.shape)
             print("---------------end decoder---------------")
-        return self.fc(output), hidden, output
+        return self.fc(output), hidden
     
     def begin_state(self, enc_hidden):
         return enc_hidden
 
-# Seq2Seq模型+损失函数  
-class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder):
-        super(Seq2Seq, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-    
-    def forward(self, x, y, check_size = False):
-        x_end = x[:, -1, 2]
-        y_length = y.shape[1]
-        enc_output,enc_hidden = self.encoder(x, check_size=check_size)
-        enc_end = enc_output[:, -1, :]
-        if check_size == True:
-            print("enc_output.shape = ", enc_output.shape)
-            print("enc_state.shape = ",enc_hidden.shape)
+def critertion(encoder, decoder, x, y, check_size = False):
+    # x_end = x[:, -1, :].to(device)
+    y_length = y.shape[1]
+    if check_size == True:
+        print("y_length = ", y_length)
+    enc_output,enc_hidden = encoder(x, check_size=check_size)
+    if check_size == True:
+        print("enc_output.shape = ", enc_output.shape)
+        print("enc_state.shape = ",enc_hidden.shape)
 
-        dec_hidden = self.decoder.begin_state(enc_hidden)
-        # last_input = x_end.unsqueeze(1)   # change last_input
-        last_input = enc_end
+    dec_hidden = decoder.begin_state(enc_hidden)
+    # dec_input = x_end
+    for tstep in range(y_length):
+        dec_output, dec_hidden = decoder(dec_hidden, enc_output, check_size=check_size)
+        # dec_input = dec_output
         if check_size == True:
-            print("last_input = ", last_input)
-        # confidence = torch.ones((last_input.shape[0], 1))/last_input.shape[0]  # add confidence
-        # last_input = torch.cat((last_input, confidence), dim=1)  # add confidence
-        tstep_check_size = check_size
-        for tstep in range(y_length):
-            dec_output, dec_hidden, this_output = self.decoder(dec_hidden, enc_output, last_input, check_size=tstep_check_size)
-            last_input = this_output # change last_input
-            if tstep_check_size == True:
-                print("dec_output.size = ", dec_output.shape)
-                print("dec_hidden.size = ", dec_hidden.shape)
-                tstep_check_size = False
-            if tstep == 0:
-                dec_output_tstep = dec_output[:,0].unsqueeze(1)
-            elif tstep == y_length-1:
-                dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
-            else:
-                dec_output_tstep = torch.cat((dec_output_tstep, dec_output[:,0].unsqueeze(1)), dim=1)
-        if check_size == True:
-            print("dec_output_tstep = ", dec_output_tstep)
-            print("y = ", y[:,:,2])
-        trend_loss, mse_loss, up_diff, up_pred = self.criterion(dec_output_tstep, y, x, check_size=check_size)
-        # mse_loss = nn.MSELoss()(dec_output_tstep[:,:-2], y[:,:,2])   # add confidence
-        # trend_loss = torch.zeros((1))
-        return trend_loss, mse_loss, up_diff, up_pred
-    
-    def criterion(self, dec_output, y, x, check_size = False):
-        with open(config_path, 'r')as f:
-            config = yaml.unsafe_load(f)
-        config = config['daily']['single_stock']
-        wt_up = config['wt_up']
-        wt_down = config['wt_down']
-        wt_avg = (wt_up+wt_down)/2
-        wt_off = abs(wt_up-wt_down)/2
-        # 我们更关心涨的，而且需要置信度高的
-        output = dec_output[:,0:y.shape[1]]
-        # 用relu还是abs还是square？rule不行
-        # confidence = F.softmax(torch.square(dec_output[:,y.shape[1]]), dim=0)
-        x_end = x[:, -1, 2]
-        pred_trend = output[:,-1] - x_end
-        pred_trend_sign = torch.sign(pred_trend)
-        y_trend = y[:,-1,2] - x_end
-        y_trend_sign = torch.sign(y_trend)
-        diff_sign = (pred_trend_sign - y_trend_sign)/2
-        diff_sign_weight = (torch.ones(diff_sign.shape)*wt_avg + diff_sign*wt_off)* diff_sign
-        trend_loss = (pred_trend - y_trend)*diff_sign_weight      # way1
-        # trend_loss = torch.abs(diff_sign_weight)                   # way2
-        trend_loss = trend_loss                                                 # add confidence here
-        mse_loss = torch.mean(torch.square((output-y[:,:,2])), dim=1)  # add confidence here
-        up_diff = torch.sum(torch.eq(diff_sign, 1)) + torch.sum(torch.eq(diff_sign, -1))   # correctness change
-        up_pred = torch.sum(torch.eq(pred_trend_sign, 1)) + torch.sum(torch.eq(pred_trend_sign, -1))
-        if check_size:
-            # print("confidence = ", confidence)
-            # print("pred_trend = ", pred_trend)
-            print("pred_trend_sign = ", pred_trend_sign)
-            # print("y_trend = ", y_trend)
-            print("y_trend_sign = ", y_trend_sign)
-            print("diff_sign = ", diff_sign)
-            print("trend_loss = ", trend_loss)
-            print("mse_loss = ", mse_loss)
-            # print("diff_sign_weight = ", diff_sign_weight)
-        # trend_loss = torch.sum(trend_loss*confidence)  # add confidence
-        # mse_loss = torch.sum(mse_loss*confidence)   # add confidence
-        trend_loss = torch.mean(trend_loss)
-        mse_loss = torch.mean(mse_loss)
-        # mse_loss = nn.MSELoss()(output, y[:,:,2])
-        if check_size:
-            print("trend_loss = ", trend_loss)
-            print("mse_loss = ", mse_loss)
-            print("up_diff = ", up_diff)
-            print("up_pred = ", up_pred)
-        return trend_loss, mse_loss, up_diff, up_pred
+            print("dec_output.size = ", dec_output.shape)
+            print("dec_hidden.size = ", dec_hidden.shape)
+            check_size = False
+        if tstep == 0:
+            dec_output_tstep = dec_output
+        else:
+            dec_output_tstep = torch.cat((dec_output_tstep, dec_output), dim=1)
+    # AUTO:这里的损失函数可以换成其他的
+    # return torch.mean(torch.abs(pred - label) / label)
+    critertion = nn.MSELoss()
+    return critertion(dec_output_tstep, y[:,:,2])
 '''
 ---------------start encoder-----------------
 x.shape =  torch.Size([32, 81, 11])
@@ -436,51 +339,3 @@ output.shape =  torch.Size([32, 64])
 dec_output.size =  torch.Size([32, 1])
 dec_hidden.size =  torch.Size([1, 32, 64])
 '''
-
-
-
-"""
-if_single_normalized: (变动幅度太小)
-  trend_loss =  0.00033726659797442455 mse_loss =  0.0006289897894021124 correctness =  0.5042918454935622 time =  0.5494203567504883
-  epoch = 20+20: 
-      model20: trend_loss =  0.0002907167664185787 mse_loss =  0.0006192489565970997 correctness =  0.5729613733905579 time =  0.42800140380859375 
-      model30: trend_loss =  0.0002892682983656414 mse_loss =  0.000627826782874763 correctness =  0.5729613733905579 time =  0.4690060615539551
-      model40: trend_loss =  0.0003037602233234793 mse_loss =  0.0006267268967349082 correctness =  0.5450643776824035 time =  0.6093623638153076
-      train_loss(去掉泛化误差): trend_loss =  0.0002292540926055443 mse_loss =  0.00032754416046790175 correctness =  0.5059059059059059 time =  3.875549077987671
-      所以是为啥呢？  理解不了
-    + conv_num = 1: time-->16
-        model20: trend_loss =  0.00043319146304080885 mse_loss =  0.0006252593729489793 correctness =  0.42703862660944203 time =  0.6519975662231445
-        (不行，无脑升)
-  epoch = 15+15:
-      trend_loss =  0.0002990877951863998 mse_loss =  0.0006194724235683679 correctness =  0.5686695278969958 time =  0.44699788093566895 
-    + conv_num = 0: time-->27 无脑transformer, 时间比较长
-        trend_loss =  0.0002712245118649056 mse_loss =  0.0005735191109124572 correctness =  0.5708154506437768 time =  1.0989899635314941 (这里应该是最佳)
-        + x_length = 27: 能否抓取关键信息？
-
-去掉池化层: trend_loss =  0.0002396833917979772 mse_loss =  0.0006104801238204042 correctness =  0.6051502145922747 time =  1.0780136585235596(正确率最高，值接近最佳)
-
-
-if_normalized:
-   epoch = 20+20:
-      model20: trend_loss =  0.0004307566540470968 mse_loss =  0.0007441111064205567 correctness =  0.4334763948497854 time =  0.4120001792907715
-      model30: trend_loss =  0.0004441321128979325 mse_loss =  0.0007680826548797389 correctness =  0.4291845493562232 time =  0.4009890556335449
-      model40: trend_loss =  0.00038059445505496116 mse_loss =  0.0008375487950009604 correctness =  0.502145922746781 time =  0.41099023818969727
-      train_loss : trend_loss =  0.00017316875491119998 mse_loss =  0.00039703551184250323 correctness =  0.5565565565565566 time =  3.8409900665283203
-    + conv_num = 1:(原来是2)时间9-->17
-        model20:trend_loss =  0.00030712548080676544 mse_loss =  0.0007713655417319387 correctness =  0.5708154506437768 time =  0.6459994316101074
-        model30:trend_loss =  0.000456053720942388 mse_loss =  0.0009147254168055952 correctness =  0.42703862660944203 time =  0.6359972953796387
-        model40:trend_loss =  0.00043708745506592094 mse_loss =  0.0008684455611122151 correctness =  0.42703862660944203 time =  0.601996898651123
-
- - train_before_test = false:
-    - if_normalized:
-        conv_num = 2, 20+20, model40: trend_loss =  0.0002990986112207692 mse_loss =  0.00039118630714559305 correctness =  0.5484460694698354 time =  1.4149975776672363
-        30+30, model60: trend_loss =  0.0002523203147575259 mse_loss =  0.0003646051748849762 correctness =  0.5338208409506399 time =  1.6169962882995605 
-        + convchannels = 18: 再测：后面
-        cov_num = 0, 20+20, model40: trend_loss =  0.00026803724257560034 mse_loss =  0.0003838968243346446 correctness =  0.5283363802559415 time =  1.3149983882904053  
-        30+30: model60: trend_loss =  0.00024785491324210953 mse_loss =  0.0003717678199690353 correctness =  0.5155393053016453 time =  1.4519994258880615
-改变注意力与上一步的连接方式:+ convchannels = 18:
-    原: hidden+output,
-    hidden: 30+30, model60: trend_loss =  0.00025639754231734615 mse_loss =  0.0003632977928241922 correctness =  0.5411334552102376 time =  1.536001205444336
-    hidden+output64: 30+30, model60: trend_loss =  0.00022280434859567322 mse_loss =  0.0004059511540819787 correctness =  0.5667276051188299 time =  1.4069960117340088 (不知道为啥，收敛的很好，但是泛化误差比想象中要大)
-    output64: 30+30, model60: trend_loss =  0.0001958307758387592 mse_loss =  0.00032505861276553734 correctness =  0.586837294332724 time =  1.653007984161377 (best)
-"""

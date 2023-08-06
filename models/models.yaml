@@ -7,25 +7,31 @@ daily:
     model_path: checkpoints\models\single_stock_daily
     log_path: checkpoints\logs
     x_length: 81
-    y_length: 8
+    y_length: 9
     batch_size: 32
     if_normalized: True
+    if_single_normalized: False   # -->0, sad
+    if_attention: True 
+    train_before_test: False
+    if_pooling: False
     kernel_size: 3
     conv_nums: 2
-    conv_channels: 4
-    conv_channels_times: 2
-    num_epochs: 10
-    num_epochs_decay: 10
-    learning_rate: 0.001
-    num_layers: 3
+    conv_channels: 18     # original 4
+    conv_channels_times: 3   # original 2
+    num_epochs: 30
+    num_epochs_decay: 30
+    learning_rate: 0.0005
+    num_layers: 1
     hidden_size: 64
     attention_size: 64 # ==hidden_size
-    model_save_freq: 10
+    model_save_freq: 5
     if_check_size: True
-    check_size_position: 19   #  0 ~ num_epochs+num_epochs_decay-1
-    if_trend_loss: True
-    wt_up: 0.1
-    wt_down: 0.05
+    check_size_position: 60   #  0 ~ num_epochs+num_epochs_decay-1 , if == num_epochs+num_epochs_decay, then check the test answer
+    if_trend_loss: False
+    wt_up: 0.03
+    wt_down: 0.03
+    test_use_model: 0  # 0: use the last model, else:use other model(eg: 10: use the model of 10th epoch)
+    
 
 
 
