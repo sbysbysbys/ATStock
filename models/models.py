@@ -287,12 +287,14 @@ class Decoder(nn.Module):
         if check_size:
             print("context.shape = ", context.shape)
         # rnn_input = context     # change last_input
-        rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
-        rnn_input = torch.reshape(rnn_input, (rnn_input.shape[0], 1, -1))
         last_input = last_input.unsqueeze(1)
-        # rnn_input = torch.cat((rnn_input, last_input), 2)
 
-        context = torch.reshape(context, (context.shape[0], 1, -1))
+        # rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
+        # rnn_input = torch.reshape(rnn_input, (rnn_input.shape[0], 1, -1))     # mode1
+        
+        # rnn_input = torch.cat((rnn_input, last_input), 2)      # mode2
+
+        context = torch.reshape(context, (context.shape[0], 1, -1))     # mode3
         rnn_input = torch.cat((context, last_input), 2)
 
         if check_size:
@@ -483,4 +485,7 @@ if_normalized:
     hidden: 30+30, model60: trend_loss =  0.00025639754231734615 mse_loss =  0.0003632977928241922 correctness =  0.5411334552102376 time =  1.536001205444336
     hidden+output64: 30+30, model60: trend_loss =  0.00022280434859567322 mse_loss =  0.0004059511540819787 correctness =  0.5667276051188299 time =  1.4069960117340088 (不知道为啥，收敛的很好，但是泛化误差比想象中要大)
     output64: 30+30, model60: trend_loss =  0.0001958307758387592 mse_loss =  0.00032505861276553734 correctness =  0.586837294332724 time =  1.653007984161377 (best)
+num_layers = 1: 18s
+    hidden:trend_loss =  0.0002159205460985605 mse_loss =  0.00034897817466925416 correctness =  0.5557586837294333
+    output64:trend_loss =  0.0002214294703056415 mse_loss =  0.0003462854470449707 correctness =  0.5484460694698354 time =  0.9219973087310791
 """

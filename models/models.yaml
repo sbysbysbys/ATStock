@@ -16,16 +16,16 @@ daily:
     if_pooling: False
     kernel_size: 3
     conv_nums: 2
-    conv_channels: 18     # original 4
-    conv_channels_times: 3   # original 2
+    conv_channels: 18     
+    conv_channels_times: 3   
     num_epochs: 30
     num_epochs_decay: 30
     learning_rate: 0.0005
-    num_layers: 1
+    num_layers: 2  
     hidden_size: 64
     attention_size: 64 # ==hidden_size
     model_save_freq: 5
-    if_check_size: True
+    if_check_size: False
     check_size_position: 60   #  0 ~ num_epochs+num_epochs_decay-1 , if == num_epochs+num_epochs_decay, then check the test answer
     if_trend_loss: False
     wt_up: 0.03
