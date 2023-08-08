@@ -13,7 +13,7 @@ from models.models import *
 
 random_seed()
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("using device = ", device)
 
 def parser():
@@ -68,7 +68,10 @@ if __name__ == '__main__':
     decoder = Decoder()
     decoder.to(device)
     model = Seq2Seq(encoder, decoder)
-    model.to(device)
+    if device.type == "cuda":
+        model = nn.DataParallel(model)
+        model.to(device)
+    
     end_data_preparation = time.time()
     print("data preparation time = ", end_data_preparation - start_data_preparation)
 

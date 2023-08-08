@@ -2,6 +2,7 @@ root_dir: &anchor_root C:\Users\admin\Desktop\github\datasets\ATStock\akshare
 daily:
   start_date: &anchor_start "20000101"
   dir: !!python/object/apply:os.path.join [*anchor_root, daily_hfq, *anchor_start]
+  train_all: False
   single_stock:
     symbol: "000001"
     model_path: checkpoints\models\single_stock_daily
@@ -31,7 +32,35 @@ daily:
     wt_up: 0.03
     wt_down: 0.03
     test_use_model: 0  # 0: use the last model, else:use other model(eg: 10: use the model of 10th epoch)
-    
+  all_stocks:
+    model_path: checkpoints\models\all_stock_daily
+    log_path: checkpoints\logs
+    x_length: 81
+    y_length: 9
+    batch_size: 32
+    if_normalized: True
+    if_single_normalized: False   # -->0, sad
+    if_attention: True 
+    train_before_test: False
+    if_pooling: False
+    kernel_size: 3
+    conv_nums: 2
+    conv_channels: 18     
+    conv_channels_times: 3   
+    num_epochs: 30
+    num_epochs_decay: 30
+    learning_rate: 0.0005
+    num_layers: 2  
+    hidden_size: 64
+    attention_size: 64 # ==hidden_size
+    model_save_freq: 5
+    if_check_size: False
+    check_size_position: 60   #  0 ~ num_epochs+num_epochs_decay-1 , if == num_epochs+num_epochs_decay, then check the test answer
+    if_trend_loss: False
+    wt_up: 0.03
+    wt_down: 0.03
+    test_use_model: 0  # 0: use the last model, else:use other model(eg: 10: use the model of 10th epoch)
+
 
 
 

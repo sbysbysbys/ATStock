@@ -15,6 +15,17 @@ sys.path.insert(0, parent_dir)
 from datasets.akshareutils import get_stock_name
 import math
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+config_path = ".//models//models.yaml"
+with open(config_path, 'r')as f:
+    config = yaml.unsafe_load(f)
+train_all = config['daily']['train_all']
+if train_all:
+    train_task = 'all_stocks'
+else:
+    train_task = 'single_stock'
+
 # 设置随机种子
 def random_seed():
     seed = 0
@@ -24,14 +35,12 @@ def random_seed():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-
-config_path = ".//models//models.yaml"
 # 取数据
 def get_stock_data():
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
     daily_dir = config["daily"]["dir"]
-    config_single = config['daily']['single_stock']
+    config_single = config['daily'][train_task]
     s_symbol = config_single['symbol']
     s_name = get_stock_name(s_symbol)
     s_path = os.path.join(daily_dir, s_symbol + s_name[:-1] + ".csv")
@@ -49,14 +58,13 @@ class ATSingleDataset(Dataset):
         self.data = data
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        self.x_len = config['daily']['single_stock']['x_length']
-        self.y_len = config['daily']['single_stock']['y_length']
-        self.if_single_normalized = config['daily']['single_stock']['if_single_normalized']
+        self.x_len = config['daily'][train_task]['x_length']
+        self.y_len = config['daily'][train_task]['y_length']
 
     def __len__(self):
         if len(self.data) < self.x_len + self.y_len:
             return 0
-        return len(self.data)-self.x_len-self.y_len-1
+        return len(self.data)-self.x_len-self.y_len+1
 
     def __getitem__(self, idx):
         x = self.data[idx:idx+self.x_len, 0:6]
@@ -67,14 +75,55 @@ class ATSingleDataset(Dataset):
         #     print("y = ", y)
         #     print("self = ", self.data[idx+self.x_len-3:idx+self.x_len+3])
         return x,y
+    
+# 构建自定义数据集(all_stock)
+class ATAllDataset(Dataset):
+    def __init__(self, datas):
+        self.datas = datas
+        with open(config_path, 'r')as f:
+            config = yaml.unsafe_load(f)
+        self.x_len = config['daily'][train_task]['x_length']
+        self.y_len = config['daily'][train_task]['y_length']
+        length = 0
+        begin_lens = []
+        begin_lens.append(0)
+        for data in self.datas:
+            if len(data) >= self.x_len + self.y_len:
+                length += len(data)-self.x_len-self.y_len+1
+                begin_lens.append(length)
+        self.begin_lens = begin_lens
+        self.length = length
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        data_idx = find_first_lower(self.begin_lens, idx, 0, len(self.begin_lens)-1)
+        data_begin_len = self.datas[data_idx]
+        data = self.datas[data_idx]
+        idx = idx - data_begin_len
+        x = data[idx:idx+self.x_len, 0:6]
+        y = data[idx+self.x_len:idx+self.x_len+self.y_len, 0:6]
+        return x,y
+
+# 找到第一个大于某个数再数列中的值
+def find_first_lower(nums, target, low, high):
+    mid = (low + high) // 2
+    if low <= mid:
+        if nums[mid] > target:
+            return find_first_lower(nums, target, low, mid - 1)
+        elif nums[mid] <= target:
+            return find_first_lower(nums, target, mid, high)
+    else:
+        return low 
 
 # 划分训练集和测试集
 def get_train_and_test_data(data):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
-    x_len = config['daily']['single_stock']['x_length']
-    y_len = config['daily']['single_stock']['y_length']
-    if_nomalized = config['daily']['single_stock']['if_normalized']
+    x_len = config['daily'][train_task]['x_length']
+    y_len = config['daily'][train_task]['y_length']
+    if_nomalized = config['daily'][train_task]['if_normalized']
     length = len(data)
 
     train_size = int(length * 0.9)
@@ -101,7 +150,7 @@ def get_normalized_data(train_data, test_data, data):
 def get_train_and_test_loader(data):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
-    batch_size = config['daily']['single_stock']['batch_size']
+    batch_size = config['daily'][train_task]['batch_size']
     train_data, test_data = get_train_and_test_data(data)
     train_dataset = ATSingleDataset(train_data)
     test_dataset = ATSingleDataset(test_data)
@@ -109,18 +158,43 @@ def get_train_and_test_loader(data):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
     return train_loader, test_loader
 
+# all_daily train_before_test数据加载器
+
+
 # 构建数据加载器2:随机分配
 def get_train_and_test_loader2(data):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
-    batch_size = config['daily']['single_stock']['batch_size']
-    if_nomalized = config['daily']['single_stock']['if_normalized']
+    batch_size = config['daily'][train_task]['batch_size']
+    if_nomalized = config['daily'][train_task]['if_normalized']
 
     if if_nomalized:
         scaler = MinMaxScaler()
         scaler.fit(data)
         data = scaler.transform(data)
+    
     dataset = ATSingleDataset(data)
+    train_size = int(len(dataset)*0.9)
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    return train_loader, test_loader
+
+# all_daily随机分配
+def get_train_and_test_loader2_all(datas):
+    with open(config_path, 'r')as f:
+        config = yaml.unsafe_load(f)
+    batch_size = config['daily'][train_task]['batch_size']
+    if_nomalized = config['daily'][train_task]['if_normalized']
+
+    if if_nomalized:
+        for data in datas:
+            scaler = MinMaxScaler()
+            scaler.fit(data)
+            data = scaler.transform(data)
+    
+    dataset = ATAllDataset(datas)
     train_size = int(len(dataset)*0.9)
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
@@ -135,7 +209,7 @@ class Encoder(nn.Module):
         
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily']['single_stock']
+        config = config['daily'][train_task]
         kernel_size = config['kernel_size']
         conv_nums = config['conv_nums']
         self.conv_nums = conv_nums
@@ -194,7 +268,7 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily']['single_stock']
+        config = config['daily'][train_task]
         if attention_size == 0:
             attention_size = config['attention_size']
         self.num_layers = config['num_layers']
@@ -259,7 +333,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily']['single_stock']
+        config = config['daily'][train_task]
         if hidden_size == 0:
             # 这里和encoder保持一致
             hidden_size = config['hidden_size']
@@ -357,7 +431,7 @@ class Seq2Seq(nn.Module):
     def criterion(self, dec_output, y, x, check_size = False):
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily']['single_stock']
+        config = config['daily'][train_task]
         wt_up = config['wt_up']
         wt_down = config['wt_down']
         wt_avg = (wt_up+wt_down)/2
