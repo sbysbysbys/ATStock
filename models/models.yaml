@@ -36,27 +36,27 @@ daily:
   all_stocks:
     model_path: checkpoints\models\all_stock_daily
     log_path: checkpoints\logs
-    x_length: 81
-    y_length: 9
-    batch_size: 32
+    x_length: 243
+    y_length: 27
+    batch_size: 64
     if_normalized: True
     if_single_normalized: False   # -->0, sad
     if_attention: True 
     train_before_test: False
     if_pooling: False
     kernel_size: 3
-    conv_nums: 2
-    conv_channels: 18     
-    conv_channels_times: 3   
-    num_epochs: 30
-    num_epochs_decay: 30
-    learning_rate: 0.0005
-    num_layers: 2  
-    hidden_size: 64
-    attention_size: 64 # ==hidden_size
-    model_save_freq: 5
+    conv_nums: 3
+    conv_channels: 64     # change?
+    conv_channels_times: 4   # change?
+    num_epochs: 100
+    num_epochs_decay: 100
+    learning_rate: 0.001
+    num_layers: 2     #change?
+    hidden_size: 256
+    attention_size: 256  # ==hidden_size
+    model_save_freq: 10
     if_check_size: False
-    check_size_position: 60   #  0 ~ num_epochs+num_epochs_decay-1 , if == num_epochs+num_epochs_decay, then check the test answer
+    check_size_position: 200   #  0 ~ num_epochs+num_epochs_decay-1 , if == num_epochs+num_epochs_decay, then check the test answer
     if_trend_loss: False
     wt_up: 0.03
     wt_down: 0.03
