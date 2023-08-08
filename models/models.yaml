@@ -1,4 +1,5 @@
 root_dir: &anchor_root C:\Users\admin\Desktop\github\datasets\ATStock\akshare
+stock_list_path: !!python/object/apply:os.path.join [*anchor_root, stock_list.txt]
 daily:
   start_date: &anchor_start "20000101"
   dir: !!python/object/apply:os.path.join [*anchor_root, daily_hfq, *anchor_start]

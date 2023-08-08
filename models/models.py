@@ -36,13 +36,14 @@ def random_seed():
     torch.backends.cudnn.deterministic = True
 
 # 取数据
-def get_stock_data():
+def get_stock_data(s_symbol=0, s_name=0):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
     daily_dir = config["daily"]["dir"]
-    config_single = config['daily'][train_task]
-    s_symbol = config_single['symbol']
-    s_name = get_stock_name(s_symbol)
+    config = config['daily'][train_task]
+    if s_symbol == 0:
+        s_symbol = config['symbol']
+        s_name = get_stock_name(s_symbol)
     s_path = os.path.join(daily_dir, s_symbol + s_name[:-1] + ".csv")
     s_data = pd.read_csv(s_path, encoding="gbk")
     s_data["日期"] = s_data["日期"].str.replace("/", "-")
@@ -51,7 +52,22 @@ def get_stock_data():
     # print(s_data)
     return s_data
 
-# print("start data preparation")
+# 取所有数据
+def get_all_stock_data():
+    with open(config_path, 'r')as f:
+        config = yaml.unsafe_load(f)
+    stock_list_path = config["stock_list_path"]
+    datas = []
+    with open(stock_list_path, 'r') as f:
+        for line in f.readlines():
+            line = line.strip('\n')
+            s_symbol = line.split(',')[0]
+            s_name = line.split(',')[1]
+            s_data = get_stock_data(s_symbol, s_name)
+            datas.append(s_data)
+    return datas
+
+
 # 构建自定义数据集
 class ATSingleDataset(Dataset):
     def __init__(self, data):
@@ -159,7 +175,9 @@ def get_train_and_test_loader(data):
     return train_loader, test_loader
 
 # all_daily train_before_test数据加载器
-
+def get_train_and_test_loader_all(datas):
+    # TODO
+    return 
 
 # 构建数据加载器2:随机分配
 def get_train_and_test_loader2(data):
