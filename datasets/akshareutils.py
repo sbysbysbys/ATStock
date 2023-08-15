@@ -195,9 +195,6 @@ if __name__ == "__main__":
 
     # get_all_stock_daily()
 
-    # name = get_stock_name("000001")
-    # print(name)
-
     # stock_zh_a_minute_df = ak.stock_zh_a_hist_min_em(symbol="600036", start_date="20230613 09:30:00", end_date="20230613 15:00:00", period='5', adjust='')
     # print(stock_zh_a_minute_df)
 

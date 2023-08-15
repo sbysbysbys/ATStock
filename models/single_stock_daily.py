@@ -11,7 +11,6 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from models.models import *
 # get_stock_data, get_train_and_test_loader, Encoder, Decoder, Attention, random_seed
-# python -m torch.distributed.launch --nproc_per_node=8 models/single_stock_daily.py --train --test
 
 random_seed()
 
