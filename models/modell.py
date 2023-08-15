@@ -15,17 +15,6 @@ sys.path.insert(0, parent_dir)
 from datasets.akshareutils import get_stock_name
 import math
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-config_path = ".//models//models.yaml"
-with open(config_path, 'r')as f:
-    config = yaml.unsafe_load(f)
-train_all = config['daily']['train_all']
-if train_all:
-    train_task = 'all_stocks'
-else:
-    train_task = 'single_stock'
-
 # 设置随机种子
 def random_seed():
     seed = 0
@@ -35,15 +24,16 @@ def random_seed():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
+
+config_path = ".//models//models.yaml"
 # 取数据
-def get_stock_data(s_symbol=0, s_name=0):
+def get_stock_data():
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
     daily_dir = config["daily"]["dir"]
-    config = config['daily'][train_task]
-    if s_symbol == 0:
-        s_symbol = config['symbol']
-        s_name = get_stock_name(s_symbol)
+    config_single = config['daily']['single_stock']
+    s_symbol = config_single['symbol']
+    s_name = get_stock_name(s_symbol)
     s_path = os.path.join(daily_dir, s_symbol + s_name[:-1] + ".csv")
     s_data = pd.read_csv(s_path, encoding="gbk")
     s_data["日期"] = s_data["日期"].str.replace("/", "-")
@@ -52,35 +42,21 @@ def get_stock_data(s_symbol=0, s_name=0):
     # print(s_data)
     return s_data
 
-# 取所有数据
-def get_all_stock_data():
-    with open(config_path, 'r')as f:
-        config = yaml.unsafe_load(f)
-    stock_list_path = config["stock_list_path"]
-    datas = []
-    with open(stock_list_path, 'r') as f:
-        for line in f.readlines():
-            line = line.strip('\n')
-            s_symbol = line.split(',')[0]
-            s_name = line.split(',')[1]
-            s_data = get_stock_data(s_symbol, s_name)
-            datas.append(s_data)
-    return datas
-
-
+# print("start data preparation")
 # 构建自定义数据集
 class ATSingleDataset(Dataset):
     def __init__(self, data):
         self.data = data
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        self.x_len = config['daily'][train_task]['x_length']
-        self.y_len = config['daily'][train_task]['y_length']
+        self.x_len = config['daily']['single_stock']['x_length']
+        self.y_len = config['daily']['single_stock']['y_length']
+        self.if_single_normalized = config['daily']['single_stock']['if_single_normalized']
 
     def __len__(self):
         if len(self.data) < self.x_len + self.y_len:
             return 0
-        return len(self.data)-self.x_len-self.y_len-1      # +1
+        return len(self.data)-self.x_len-self.y_len-1
 
     def __getitem__(self, idx):
         x = self.data[idx:idx+self.x_len, 0:6]
@@ -91,57 +67,14 @@ class ATSingleDataset(Dataset):
         #     print("y = ", y)
         #     print("self = ", self.data[idx+self.x_len-3:idx+self.x_len+3])
         return x,y
-    
-# 构建自定义数据集(all_stock)
-class ATAllDataset(Dataset):
-    def __init__(self, datas):
-        self.datas = datas
-        with open(config_path, 'r')as f:
-            config = yaml.unsafe_load(f)
-        self.x_len = config['daily'][train_task]['x_length']
-        self.y_len = config['daily'][train_task]['y_length']
-        length = 0
-        begin_lens = []
-        begin_lens.append(0)
-        for data in self.datas:
-            if len(data) >= self.x_len + self.y_len:
-                length += len(data)-self.x_len-self.y_len+1
-                begin_lens.append(length)
-            else:
-                begin_lens.append(length)
-        self.begin_lens = begin_lens
-        self.length = length
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, idx):
-        data_idx = find_first_lower(self.begin_lens, idx, 0, len(self.begin_lens)-1)
-        data_begin_len = self.datas[data_idx]
-        data = self.datas[data_idx]
-        idx = idx - data_begin_len
-        x = data[idx:idx+self.x_len, 0:6]
-        y = data[idx+self.x_len:idx+self.x_len+self.y_len, 0:6]
-        return x,y
-
-# 找到第一个大于某个数再数列中的值
-def find_first_lower(nums, target, low, high):
-    mid = (low + high) // 2
-    if low <= mid:
-        if nums[mid] > target:
-            return find_first_lower(nums, target, low, mid - 1)
-        elif nums[mid] <= target:
-            return find_first_lower(nums, target, mid, high)
-    else:
-        return low 
 
 # 划分训练集和测试集
 def get_train_and_test_data(data):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
-    x_len = config['daily'][train_task]['x_length']
-    y_len = config['daily'][train_task]['y_length']
-    if_nomalized = config['daily'][train_task]['if_normalized']
+    x_len = config['daily']['single_stock']['x_length']
+    y_len = config['daily']['single_stock']['y_length']
+    if_nomalized = config['daily']['single_stock']['if_normalized']
     length = len(data)
 
     train_size = int(length * 0.9)
@@ -168,7 +101,7 @@ def get_normalized_data(train_data, test_data, data):
 def get_train_and_test_loader(data):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
-    batch_size = config['daily'][train_task]['batch_size']
+    batch_size = config['daily']['single_stock']['batch_size']
     train_data, test_data = get_train_and_test_data(data)
     train_dataset = ATSingleDataset(train_data)
     test_dataset = ATSingleDataset(test_data)
@@ -176,45 +109,18 @@ def get_train_and_test_loader(data):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
     return train_loader, test_loader
 
-# all_daily train_before_test数据加载器
-def get_train_and_test_loader_all(datas):
-    # TODO
-    return 
-
 # 构建数据加载器2:随机分配
 def get_train_and_test_loader2(data):
     with open(config_path, 'r')as f:
         config = yaml.unsafe_load(f)
-    batch_size = config['daily'][train_task]['batch_size']
-    if_nomalized = config['daily'][train_task]['if_normalized']
+    batch_size = config['daily']['single_stock']['batch_size']
+    if_nomalized = config['daily']['single_stock']['if_normalized']
 
     if if_nomalized:
         scaler = MinMaxScaler()
         scaler.fit(data)
         data = scaler.transform(data)
-    
     dataset = ATSingleDataset(data)
-    train_size = int(len(dataset)*0.9)
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
-    return train_loader, test_loader
-
-# all_daily随机分配
-def get_train_and_test_loader2_all(datas):
-    with open(config_path, 'r')as f:
-        config = yaml.unsafe_load(f)
-    batch_size = config['daily'][train_task]['batch_size']
-    if_nomalized = config['daily'][train_task]['if_normalized']
-
-    if if_nomalized:
-        for data in datas:
-            scaler = MinMaxScaler()
-            scaler.fit(data)
-            data = scaler.transform(data)
-    
-    dataset = ATAllDataset(datas)
     train_size = int(len(dataset)*0.9)
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
@@ -229,7 +135,7 @@ class Encoder(nn.Module):
         
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily'][train_task]
+        config = config['daily']['single_stock']
         kernel_size = config['kernel_size']
         conv_nums = config['conv_nums']
         self.conv_nums = conv_nums
@@ -288,7 +194,7 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily'][train_task]
+        config = config['daily']['single_stock']
         if attention_size == 0:
             attention_size = config['attention_size']
         self.num_layers = config['num_layers']
@@ -353,7 +259,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily'][train_task]
+        config = config['daily']['single_stock']
         if hidden_size == 0:
             # 这里和encoder保持一致
             hidden_size = config['hidden_size']
@@ -381,14 +287,12 @@ class Decoder(nn.Module):
         if check_size:
             print("context.shape = ", context.shape)
         # rnn_input = context     # change last_input
+        rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
+        rnn_input = torch.reshape(rnn_input, (rnn_input.shape[0], 1, -1))
         last_input = last_input.unsqueeze(1)
+        # rnn_input = torch.cat((rnn_input, last_input), 2)
 
-        # rnn_input = torch.cat((context, hidden.transpose(0,1)), 2)
-        # rnn_input = torch.reshape(rnn_input, (rnn_input.shape[0], 1, -1))     # mode1
-        
-        # rnn_input = torch.cat((rnn_input, last_input), 2)      # mode2
-
-        context = torch.reshape(context, (context.shape[0], 1, -1))     # mode3
+        context = torch.reshape(context, (context.shape[0], 1, -1))
         rnn_input = torch.cat((context, last_input), 2)
 
         if check_size:
@@ -451,7 +355,7 @@ class Seq2Seq(nn.Module):
     def criterion(self, dec_output, y, x, check_size = False):
         with open(config_path, 'r')as f:
             config = yaml.unsafe_load(f)
-        config = config['daily'][train_task]
+        config = config['daily']['single_stock']
         wt_up = config['wt_up']
         wt_down = config['wt_down']
         wt_avg = (wt_up+wt_down)/2
@@ -579,7 +483,4 @@ if_normalized:
     hidden: 30+30, model60: trend_loss =  0.00025639754231734615 mse_loss =  0.0003632977928241922 correctness =  0.5411334552102376 time =  1.536001205444336
     hidden+output64: 30+30, model60: trend_loss =  0.00022280434859567322 mse_loss =  0.0004059511540819787 correctness =  0.5667276051188299 time =  1.4069960117340088 (不知道为啥，收敛的很好，但是泛化误差比想象中要大)
     output64: 30+30, model60: trend_loss =  0.0001958307758387592 mse_loss =  0.00032505861276553734 correctness =  0.586837294332724 time =  1.653007984161377 (best)
-num_layers = 0: 18s
-    hidden:trend_loss =  0.0002159205460985605 mse_loss =  0.00034897817466925416 correctness =  0.5557586837294333
-    output64:trend_loss =  0.0002214294703056415 mse_loss =  0.0003462854470449707 correctness =  0.5484460694698354 time =  0.9219973087310791
 """

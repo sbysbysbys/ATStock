@@ -33,3 +33,21 @@ python .\visulization\vis.py --delta daily [--graph kline] [--symbol 000001] [--
 # 五分钟线
 python .\visulization\vis.py --delta 5minutes [--graph kline] [--symbol 000001] [--date 20230725]
 ```
+
+## 主要步骤
+### 步骤1：训练与测试
+* single_daily(all_daily):
+* cpu训练: 
+```
+python single_stock_daily.py [--train] [--test]
+python all_stock_daily.py [--train] [--test]
+```
+* 一机多卡：
+```
+python -m torch.distributed.launch --nproc_per_node=8 models/single_stock_daily.py [--train] [--test]
+python -m torch.distributed.launch --nproc_per_node=8 models/all_stock_daily.py [--train] [--test]
+```
+### 步骤2：学习置信度
+### 步骤3：预测
+qlib
+

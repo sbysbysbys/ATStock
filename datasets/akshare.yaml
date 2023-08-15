@@ -1,18 +1,18 @@
-root_dir: &anchor_0 C:\\Users\\admin\\Desktop\\github\\datasets\\ATStock\\akshare
-log: !!python/object/apply:os.path.join [*anchor_0, log.txt]
+log: C:\\Users\\admin\\Desktop\\github\\datasets\\ATStock\\akshare\log.txt
 one_stock_daily:
   adjust: hfq
   end_date: '20230727'
   period: daily
-  save_dir: !!python/object/apply:os.path.join [*anchor_0, daily_hfq]
+  save_dir: C:\\Users\\admin\\Desktop\\github\\datasets\\ATStock\\akshare\daily_hfq
   start_date: '20000101'
   symbol: '000001'
 one_stock_one_minute:
   adjust: hfq
   end_date: '20230728'
   period: '5'
-  save_dir: !!python/object/apply:os.path.join [*anchor_0, 5_minutes]
+  save_dir: C:\\Users\\admin\\Desktop\\github\\datasets\\ATStock\\akshare\5_minutes
   start_date: '20230615'
   symbol: '000001'
-stock_name_dir: !!python/object/apply:os.path.join [*anchor_0, stock_list.txt]
-update_time: '20230730'
+root_dir: C:\\Users\\admin\\Desktop\\github\\datasets\\ATStock\\akshare
+stock_name_dir: C:\\Users\\admin\\Desktop\\github\\datasets\\ATStock\\akshare\stock_list.txt
+update_time: '20230808'
